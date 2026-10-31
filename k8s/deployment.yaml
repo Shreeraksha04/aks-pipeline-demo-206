@@ -1,0 +1,29 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demobook
+  labels:
+    app: demobook
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: demobook
+  template:
+    metadata:
+      labels:
+        app: demobook
+    spec:
+      containers:
+        - name: demobook
+          image: ACR_LOGIN_SERVER/demobook:IMAGE_TAG
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

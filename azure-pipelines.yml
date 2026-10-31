@@ -1,0 +1,51 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  acrName: 'acr206'
+  aksResourceGroup: 'PipelineAKS-Demo-RG'
+  aksName: 'pipeline1-aks'
+  imageName: 'demobook'
+
+stages:
+- stage: Build
+  displayName: 'Test, build and publish the image'
+  jobs:
+  - job: BuildAndPush
+    steps:
+    - script: grep -q "Hello from Docker" app/index.html
+      displayName: 'Test: the page contains the expected text'
+
+    - task: AzureCLI@2
+      displayName: 'Build and push the image to ACR'
+      inputs:
+        azureSubscription: 'Azure-AKS-Connection'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az acr login --name $(acrName)
+          docker build -t $(acrName).azurecr.io/$(imageName):$(Build.BuildNumber) app
+          docker push $(acrName).azurecr.io/$(imageName):$(Build.BuildNumber)
+
+- stage: Deploy
+  displayName: 'Deploy to AKS and verify'
+  dependsOn: Build
+  jobs:
+  - job: DeployToAKS
+    steps:
+    - task: AzureCLI@2
+      displayName: 'Deploy the manifests and wait for the rollout'
+      inputs:
+        azureSubscription: 'Azure-AKS-Connection'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az aks get-credentials --resource-group $(aksResourceGroup) --name $(aksName) --overwrite-existing
+          sed -i "s|ACR_LOGIN_SERVER|$(acrName).azurecr.io|; s|IMAGE_TAG|$(Build.BuildNumber)|" k8s/deployment.yaml
+          grep "image:" k8s/deployment.yaml
+          kubectl apply -f k8s/
+          kubectl rollout status deployment/demobook --timeout=180s
+          kubectl get pods,svc -o wide
